@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Toast from '../components/Toast';
-import { LogIn, Key, Mail, ShieldAlert, Sparkles, User, Briefcase, ShieldCheck } from 'lucide-react';
+import { LogIn, Key, Mail, Lock, ShieldAlert, Sparkles, User, Briefcase, ShieldCheck } from 'lucide-react';
 
 export const Login = () => {
   const [email, setEmail] = useState('');
