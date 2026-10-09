@@ -17,8 +17,13 @@ const pool = mysql.createPool({
 
 // Utility helper to execute queries
 async function query(sql, params) {
-  const [results] = await pool.execute(sql, params);
-  return results;
+  try {
+    const [results] = await pool.query(sql, params);
+    return results;
+  } catch (error) {
+    console.error('MySQL Query Error:', error.message, 'SQL:', sql);
+    throw error;
+  }
 }
 
 module.exports = {
