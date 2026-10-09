@@ -1,6 +1,11 @@
 const path = require('path');
 const fs = require('fs');
 const { query } = require('../config/db');
+const { 
+  sendCandidateApplicationConfirmation, 
+  sendRecruiterNewApplicantAlert, 
+  sendCandidateStatusUpdateNotification 
+} = require('../services/emailService');
 
 // Candidate apply for job
 async function applyForJob(req, res) {
@@ -46,14 +51,45 @@ async function applyForJob(req, res) {
       [job_id, candidateId, resumeId, 'Applied', cover_letter || '']
     );
 
-    // Notify Recruiter associated with job
-    const jobInfo = await query('SELECT j.title, r.user_id as recruiter_user_id FROM jobs j JOIN recruiters r ON j.recruiter_id = r.id WHERE j.id = ?', [job_id]);
+    // Fetch Job & Recruiter Details for Email Notifications & System Alert
+    const jobInfo = await query(
+      `SELECT j.title, r.company_name, u_rec.name as recruiter_name, u_rec.email as recruiter_email, r.user_id as recruiter_user_id 
+       FROM jobs j 
+       JOIN recruiters r ON j.recruiter_id = r.id 
+       JOIN users u_rec ON r.user_id = u_rec.id 
+       WHERE j.id = ?`,
+      [job_id]
+    );
+
+    const candidateUser = await query('SELECT name, email FROM users WHERE id = ?', [userId]);
+    const candidateName = candidateUser[0]?.name || req.user.name || 'Candidate';
+    const candidateEmail = candidateUser[0]?.email || req.user.email;
+
     if (jobInfo.length > 0) {
-      const applicantName = req.user.name || 'A candidate';
+      const jobDetails = jobInfo[0];
+
+      // In-app Notification to recruiter
       await query(
         'INSERT INTO notifications (user_id, title, message) VALUES (?, ?, ?)',
-        [jobInfo[0].recruiter_user_id, 'New Application Received', `${applicantName} submitted an application for "${jobInfo[0].title}".`]
+        [jobDetails.recruiter_user_id, 'New Application Received', `${candidateName} submitted an application for "${jobDetails.title}".`]
       );
+
+      // 📧 1. Send Confirmation Email to Candidate
+      sendCandidateApplicationConfirmation({
+        candidateName,
+        candidateEmail,
+        jobTitle: jobDetails.title,
+        companyName: jobDetails.company_name
+      }).catch(err => console.error('Email confirmation error:', err));
+
+      // 📧 2. Send Alert Email to Recruiter
+      sendRecruiterNewApplicantAlert({
+        recruiterName: jobDetails.recruiter_name,
+        recruiterEmail: jobDetails.recruiter_email,
+        candidateName,
+        candidateEmail,
+        jobTitle: jobDetails.title
+      }).catch(err => console.error('Recruiter email alert error:', err));
     }
 
     return res.status(201).json({
@@ -264,10 +300,11 @@ async function updateApplicationStatus(req, res) {
     }
 
     const appDetails = await query(
-      `SELECT a.id, j.title as job_title, c.user_id as candidate_user_id 
+      `SELECT a.id, j.title as job_title, c.user_id as candidate_user_id, u.name as candidate_name, u.email as candidate_email 
        FROM applications a 
        JOIN jobs j ON a.job_id = j.id 
        JOIN candidates c ON a.candidate_id = c.id 
+       JOIN users u ON c.user_id = u.id 
        WHERE a.id = ?`,
       [id]
     );
@@ -278,14 +315,24 @@ async function updateApplicationStatus(req, res) {
 
     await query('UPDATE applications SET status = ? WHERE id = ?', [status, id]);
 
-    // Send Notification to Candidate
+    // Send In-App Notification to Candidate
     const candidateUserId = appDetails[0].candidate_user_id;
+    const candidateName = appDetails[0].candidate_name;
+    const candidateEmail = appDetails[0].candidate_email;
     const jobTitle = appDetails[0].job_title;
 
     await query(
       'INSERT INTO notifications (user_id, title, message) VALUES (?, ?, ?)',
       [candidateUserId, `Application Status Update: ${status}`, `Your application for "${jobTitle}" has been updated to "${status}".`]
     );
+
+    // 📧 Send Email Notification to Candidate on Status Change
+    sendCandidateStatusUpdateNotification({
+      candidateName,
+      candidateEmail,
+      jobTitle,
+      newStatus: status
+    }).catch(err => console.error('Status update email error:', err));
 
     return res.json({ message: `Application status updated to ${status}.` });
   } catch (error) {
