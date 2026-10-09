@@ -3,7 +3,6 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-// Create Nodemailer Transporter
 let transporter = null;
 
 function getTransporter() {
@@ -14,22 +13,31 @@ function getTransporter() {
     const smtpPass = process.env.SMTP_PASS || '';
 
     if (smtpUser && smtpPass) {
-      transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpPort === 465,
-        auth: {
-          user: smtpUser,
-          pass: smtpPass
-        }
-      });
-      console.log('📧 SMTP Email Transporter configured for:', smtpUser);
+      if (smtpHost.includes('gmail')) {
+        transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: smtpUser,
+            pass: smtpPass
+          }
+        });
+      } else {
+        transporter = nodemailer.createTransport({
+          host: smtpHost,
+          port: smtpPort,
+          secure: smtpPort === 465,
+          auth: {
+            user: smtpUser,
+            pass: smtpPass
+          }
+        });
+      }
+      console.log('📧 Nodemailer Transporter initialized for:', smtpUser);
     } else {
-      // Development mock transporter (logs email output cleanly to console)
       transporter = {
         sendMail: async (mailOptions) => {
           console.log('\n📬 --- [EMAIL NOTIFICATION LOGGED] ---');
-          console.log(`FROM: ${mailOptions.from || 'noreply@recruitment-system.com'}`);
+          console.log(`FROM: ${mailOptions.from || 'noreply@recruitment.com'}`);
           console.log(`TO: ${mailOptions.to}`);
           console.log(`SUBJECT: ${mailOptions.subject}`);
           console.log(`BODY:\n${mailOptions.text || mailOptions.html}`);
@@ -37,7 +45,7 @@ function getTransporter() {
           return { messageId: 'mock-email-' + Date.now() };
         }
       };
-      console.log('ℹ️ SMTP credentials not set in .env. Email Service operating in Console Logging Mode.');
+      console.log('ℹ️ SMTP credentials operating in Console Logging Mode.');
     }
   }
   return transporter;
@@ -48,7 +56,7 @@ async function sendCandidateApplicationConfirmation({ candidateName, candidateEm
   try {
     const t = getTransporter();
     const mailOptions = {
-      from: `"${companyName || 'RecruitX ERP'}" <noreply@recruitment.com>`,
+      from: `"${companyName || 'RecruitX ERP'}" <${process.env.SMTP_USER || 'noreply@recruitment.com'}>`,
       to: candidateEmail,
       subject: `Application Confirmation: ${jobTitle}`,
       text: `Hello ${candidateName},\n\nThank you for submitting your job application for the position of "${jobTitle}" at ${companyName || 'Apex Tech Solutions'}.\n\nYour application has been received and is currently under review by our hiring recruitment team.\n\nYou can log in to your Candidate Portal anytime to track your application status step-by-step.\n\nBest regards,\nRecruitment & Talent Acquisition Team`,
@@ -80,7 +88,7 @@ async function sendRecruiterNewApplicantAlert({ recruiterName, recruiterEmail, c
   try {
     const t = getTransporter();
     const mailOptions = {
-      from: `"RecruitX ERP System" <noreply@recruitment.com>`,
+      from: `"RecruitX ERP System" <${process.env.SMTP_USER || 'noreply@recruitment.com'}>`,
       to: recruiterEmail,
       subject: `New Application Received: ${jobTitle} - ${candidateName}`,
       text: `Hello ${recruiterName},\n\nA new candidate, ${candidateName} (${candidateEmail}), has submitted an application for your job posting "${jobTitle}".\n\nPlease log in to your Recruiter HR Dashboard to review candidate profile details and resume.\n\nBest regards,\nRecruitX System`,
@@ -113,7 +121,7 @@ async function sendCandidateStatusUpdateNotification({ candidateName, candidateE
   try {
     const t = getTransporter();
     const mailOptions = {
-      from: `"RecruitX ERP" <noreply@recruitment.com>`,
+      from: `"RecruitX ERP" <${process.env.SMTP_USER || 'noreply@recruitment.com'}>`,
       to: candidateEmail,
       subject: `Status Update for ${jobTitle}: ${newStatus}`,
       text: `Hello ${candidateName},\n\nYour application status for "${jobTitle}" has been updated to "${newStatus}".\n\nPlease log in to your candidate dashboard for full details.\n\nBest regards,\nHiring Team`,
