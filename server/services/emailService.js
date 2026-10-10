@@ -17,18 +17,28 @@ function getTransporter() {
     const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
 
     if (smtpUser && smtpPass) {
-      transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpPort === 465,
-        auth: {
-          user: smtpUser,
-          pass: smtpPass
-        },
-        connectionTimeout: 5000,
-        greetingTimeout: 5000,
-        socketTimeout: 7000
-      });
+      if (smtpHost.includes('gmail') || smtpUser.includes('@gmail.com')) {
+        transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: smtpUser,
+            pass: smtpPass
+          }
+        });
+      } else {
+        transporter = nodemailer.createTransport({
+          host: smtpHost,
+          port: smtpPort,
+          secure: smtpPort === 465,
+          auth: {
+            user: smtpUser,
+            pass: smtpPass
+          },
+          connectionTimeout: 5000,
+          greetingTimeout: 5000,
+          socketTimeout: 7000
+        });
+      }
       console.log('📧 Nodemailer Transporter initialized for:', smtpUser);
     } else {
       transporter = {
