@@ -32,7 +32,17 @@ export const Login = () => {
         else navigate('/candidate/dashboard');
       }, 500);
     } catch (err) {
-      setToast({ message: err.response?.data?.message || 'Login failed. Please verify credentials.', type: 'error' });
+      if (err.response?.data?.requiresVerification) {
+        setToast({ 
+          message: 'Account not verified. Redirecting to email verification...', 
+          type: 'warning' 
+        });
+        setTimeout(() => {
+          navigate(`/verify-email?email=${encodeURIComponent(email)}`);
+        }, 1200);
+      } else {
+        setToast({ message: err.response?.data?.message || 'Login failed. Please verify credentials.', type: 'error' });
+      }
     } finally {
       setLoading(false);
     }

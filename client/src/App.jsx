@@ -9,6 +9,7 @@ import Jobs from './pages/Jobs';
 import JobDetails from './pages/JobDetails';
 import Register from './pages/Register';
 import Login from './pages/Login';
+import VerifyEmail from './pages/VerifyEmail';
 import Contact from './pages/Contact';
 
 // Candidate Pages
@@ -35,6 +36,7 @@ import ManageCandidates from './pages/admin/ManageCandidates';
 import AdminJobs from './pages/admin/AdminJobs';
 import AdminApplications from './pages/admin/AdminApplications';
 import AdminReports from './pages/admin/AdminReports';
+import AdminEmailLogs from './pages/admin/AdminEmailLogs';
 
 // Role Guard Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -73,6 +75,7 @@ export function App() {
           <Route path="/jobs/:id" element={<JobDetails />} />
           <Route path="/register" element={<Register />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/contact" element={<Contact />} />
 
           {/* Candidate Protected Routes */}
@@ -99,6 +102,7 @@ export function App() {
           <Route path="/admin/jobs" element={<ProtectedRoute allowedRoles={['admin']}><AdminJobs /></ProtectedRoute>} />
           <Route path="/admin/applications" element={<ProtectedRoute allowedRoles={['admin']}><AdminApplications /></ProtectedRoute>} />
           <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={['admin']}><AdminReports /></ProtectedRoute>} />
+          <Route path="/admin/email-logs" element={<ProtectedRoute allowedRoles={['admin']}><AdminEmailLogs /></ProtectedRoute>} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

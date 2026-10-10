@@ -68,12 +68,19 @@ export const Register = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const newUser = await register({ ...formData, role });
-      setToast({ message: 'Registration successful! Redirecting to dashboard...', type: 'success' });
-      setTimeout(() => {
-        if (newUser.role === 'recruiter') navigate('/recruiter/dashboard');
-        else navigate('/candidate/dashboard');
-      }, 1000);
+      const result = await register({ ...formData, role });
+      if (result.requiresVerification) {
+        setToast({ message: 'Verification code sent! Please verify your email.', type: 'success' });
+        setTimeout(() => {
+          navigate(`/verify-email?email=${encodeURIComponent(result.email || formData.email)}`);
+        }, 1200);
+      } else {
+        setToast({ message: 'Registration successful! Redirecting to dashboard...', type: 'success' });
+        setTimeout(() => {
+          if (result.role === 'recruiter') navigate('/recruiter/dashboard');
+          else navigate('/candidate/dashboard');
+        }, 1000);
+      }
     } catch (err) {
       setToast({ message: err.response?.data?.message || 'Registration failed. Please check form fields.', type: 'error' });
     } finally {

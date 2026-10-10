@@ -128,6 +128,8 @@ async function getReports(req, res) {
   }
 }
 
+const { getEmailLogs: fetchEmailLogs, retryFailedEmail } = require('../services/emailService');
+
 // Get User Notifications
 async function getNotifications(req, res) {
   try {
@@ -154,9 +156,49 @@ async function markNotificationRead(req, res) {
   }
 }
 
+// Admin Email Notification History & Outbox Viewer
+async function getEmailLogs(req, res) {
+  try {
+    const { page = 1, limit = 20, status, search } = req.query;
+    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
+    const result = await fetchEmailLogs({
+      limit: parseInt(limit),
+      offset,
+      status: status || undefined,
+      search: search || undefined
+    });
+
+    return res.json({
+      logs: result.logs,
+      total: result.total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(result.total / parseInt(limit))
+    });
+  } catch (error) {
+    console.error('Error fetching email logs:', error);
+    return res.status(500).json({ message: 'Server error retrieving email history.', error: error.message });
+  }
+}
+
+// Admin Retry Failed Outbox Email
+async function retryEmail(req, res) {
+  try {
+    const { id } = req.params;
+    const result = await retryFailedEmail(id);
+    return res.json({ message: 'Email retry dispatched successfully.', result });
+  } catch (error) {
+    console.error('Error retrying email:', error);
+    return res.status(500).json({ message: 'Failed to resend email: ' + error.message });
+  }
+}
+
 module.exports = {
   getDashboardStats,
   getReports,
   getNotifications,
-  markNotificationRead
+  markNotificationRead,
+  getEmailLogs,
+  retryEmail
 };
+

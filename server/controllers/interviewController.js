@@ -1,6 +1,11 @@
 const { query } = require('../config/db');
+const { 
+  sendInterviewScheduledEmail, 
+  sendInterviewCancelledEmail,
+  sendCandidateStatusUpdateNotification 
+} = require('../services/emailService');
 
-// Schedule interview
+// Schedule or reschedule interview
 async function scheduleInterview(req, res) {
   try {
     const { application_id, scheduled_date, location_or_link, notes } = req.body;
@@ -10,10 +15,11 @@ async function scheduleInterview(req, res) {
     }
 
     const apps = await query(
-      `SELECT a.id, a.job_id, j.title as job_title, c.user_id as candidate_user_id 
+      `SELECT a.id, a.job_id, j.title as job_title, c.user_id as candidate_user_id, u.name as candidate_name, u.email as candidate_email 
        FROM applications a 
        JOIN jobs j ON a.job_id = j.id 
        JOIN candidates c ON a.candidate_id = c.id 
+       JOIN users u ON c.user_id = u.id 
        WHERE a.id = ?`,
       [application_id]
     );
@@ -22,11 +28,14 @@ async function scheduleInterview(req, res) {
       return res.status(404).json({ message: 'Application record not found.' });
     }
 
-    // Check if interview already scheduled
+    const appInfo = apps[0];
+
+    // Check if interview already scheduled (to distinguish new vs reschedule)
     const existingInt = await query('SELECT id FROM interviews WHERE application_id = ?', [application_id]);
     let interviewId;
+    const isUpdate = existingInt.length > 0;
 
-    if (existingInt.length > 0) {
+    if (isUpdate) {
       interviewId = existingInt[0].id;
       await query(
         'UPDATE interviews SET scheduled_date = ?, location_or_link = ?, notes = ?, status = ? WHERE id = ?',
@@ -43,19 +52,31 @@ async function scheduleInterview(req, res) {
     // Update Application status to 'Interview Scheduled'
     await query('UPDATE applications SET status = "Interview Scheduled" WHERE id = ?', [application_id]);
 
-    // Send Notification to candidate
+    // Send in-app notification to candidate
     const formattedDate = new Date(scheduled_date).toLocaleString();
     await query(
       'INSERT INTO notifications (user_id, title, message) VALUES (?, ?, ?)',
       [
-        apps[0].candidate_user_id,
-        'Interview Scheduled!',
-        `Your interview for "${apps[0].job_title}" has been scheduled for ${formattedDate}. Location/Link: ${location_or_link}`
+        appInfo.candidate_user_id,
+        isUpdate ? 'Interview Rescheduled!' : 'Interview Scheduled!',
+        `Your interview for "${appInfo.job_title}" has been ${isUpdate ? 'rescheduled' : 'scheduled'} for ${formattedDate}. Location/Link: ${location_or_link}`
       ]
     );
 
+    // 📧 Send Interview Scheduled / Rescheduled Email Notification to Candidate
+    sendInterviewScheduledEmail({
+      candidateName: appInfo.candidate_name,
+      candidateEmail: appInfo.candidate_email,
+      jobTitle: appInfo.job_title,
+      scheduledDate,
+      locationOrLink,
+      notes,
+      interviewId,
+      isUpdate
+    }).catch(err => console.error('Interview schedule email dispatch error:', err.message));
+
     return res.status(201).json({
-      message: 'Interview scheduled successfully!',
+      message: `Interview ${isUpdate ? 'rescheduled' : 'scheduled'} successfully!`,
       interviewId
     });
   } catch (error) {
@@ -118,21 +139,65 @@ async function updateInterviewStatus(req, res) {
       return res.status(400).json({ message: 'Invalid interview status.' });
     }
 
-    const intCheck = await query('SELECT * FROM interviews WHERE id = ?', [id]);
-    if (intCheck.length === 0) {
+    const intDetails = await query(
+      `SELECT i.*, a.job_id, j.title as job_title, u.id as candidate_user_id, u.name as candidate_name, u.email as candidate_email 
+       FROM interviews i 
+       JOIN applications a ON i.application_id = a.id 
+       JOIN jobs j ON a.job_id = j.id 
+       JOIN candidates c ON a.candidate_id = c.id 
+       JOIN users u ON c.user_id = u.id 
+       WHERE i.id = ?`,
+      [id]
+    );
+
+    if (intDetails.length === 0) {
       return res.status(404).json({ message: 'Interview record not found.' });
     }
+
+    const intRecord = intDetails[0];
 
     await query(
       'UPDATE interviews SET status = ?, notes = COALESCE(?, notes) WHERE id = ?',
       [status, notes || null, id]
     );
 
-    // If Passed or Failed, update application status accordingly
+    // If Cancelled, send cancellation email
+    if (status === 'Cancelled') {
+      sendInterviewCancelledEmail({
+        candidateName: intRecord.candidate_name,
+        candidateEmail: intRecord.candidate_email,
+        jobTitle: intRecord.job_title,
+        interviewId: id,
+        notes: notes || intRecord.notes
+      }).catch(err => console.error('Interview cancellation email error:', err.message));
+
+      await query(
+        'INSERT INTO notifications (user_id, title, message) VALUES (?, ?, ?)',
+        [intRecord.candidate_user_id, 'Interview Cancelled', `Your interview for "${intRecord.job_title}" has been cancelled.`]
+      );
+    }
+
+    // If Passed or Failed, update application status accordingly and notify candidate
     if (status === 'Passed') {
-      await query('UPDATE applications SET status = "Selected" WHERE id = ?', [intCheck[0].application_id]);
+      await query('UPDATE applications SET status = "Selected" WHERE id = ?', [intRecord.application_id]);
+      sendCandidateStatusUpdateNotification({
+        candidateName: intRecord.candidate_name,
+        candidateEmail: intRecord.candidate_email,
+        jobTitle: intRecord.job_title,
+        oldStatus: 'Interview Scheduled',
+        newStatus: 'Selected',
+        applicationId: intRecord.application_id
+      }).catch(err => console.error('Outcome status update email error:', err.message));
     } else if (status === 'Failed') {
-      await query('UPDATE applications SET status = "Rejected" WHERE id = ?', [intCheck[0].application_id]);
+      await query('UPDATE applications SET status = "Rejected" WHERE id = ?', [intRecord.application_id]);
+      sendCandidateStatusUpdateNotification({
+        candidateName: intRecord.candidate_name,
+        candidateEmail: intRecord.candidate_email,
+        jobTitle: intRecord.job_title,
+        oldStatus: 'Interview Scheduled',
+        newStatus: 'Rejected',
+        applicationId: intRecord.application_id
+      }).catch(err => console.error('Outcome status update email error:', err.message));
     }
 
     return res.json({ message: `Interview status updated to ${status}.` });

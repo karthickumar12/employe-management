@@ -79,7 +79,10 @@ async function applyForJob(req, res) {
         candidateName,
         candidateEmail,
         jobTitle: jobDetails.title,
-        companyName: jobDetails.company_name
+        companyName: jobDetails.company_name,
+        applicationId: appResult.insertId,
+        submissionDate: new Date(),
+        status: 'Applied'
       }).catch(err => console.error('Email confirmation error:', err));
 
       // 📧 2. Send Alert Email to Recruiter
@@ -88,7 +91,8 @@ async function applyForJob(req, res) {
         recruiterEmail: jobDetails.recruiter_email,
         candidateName,
         candidateEmail,
-        jobTitle: jobDetails.title
+        jobTitle: jobDetails.title,
+        applicationId: appResult.insertId
       }).catch(err => console.error('Recruiter email alert error:', err));
     }
 
@@ -300,7 +304,7 @@ async function updateApplicationStatus(req, res) {
     }
 
     const appDetails = await query(
-      `SELECT a.id, j.title as job_title, c.user_id as candidate_user_id, u.name as candidate_name, u.email as candidate_email 
+      `SELECT a.id, a.status as old_status, j.title as job_title, c.user_id as candidate_user_id, u.name as candidate_name, u.email as candidate_email 
        FROM applications a 
        JOIN jobs j ON a.job_id = j.id 
        JOIN candidates c ON a.candidate_id = c.id 
@@ -313,28 +317,54 @@ async function updateApplicationStatus(req, res) {
       return res.status(404).json({ message: 'Application record not found.' });
     }
 
+    const currentApp = appDetails[0];
+    const oldStatus = currentApp.old_status;
+
+    // Send notifications ONLY when the status genuinely changes
+    if (oldStatus === status) {
+      return res.json({ 
+        message: `Application is already at status "${status}".`,
+        updated: false 
+      });
+    }
+
     await query('UPDATE applications SET status = ? WHERE id = ?', [status, id]);
 
     // Send In-App Notification to Candidate
-    const candidateUserId = appDetails[0].candidate_user_id;
-    const candidateName = appDetails[0].candidate_name;
-    const candidateEmail = appDetails[0].candidate_email;
-    const jobTitle = appDetails[0].job_title;
+    const candidateUserId = currentApp.candidate_user_id;
+    const candidateName = currentApp.candidate_name;
+    const candidateEmail = currentApp.candidate_email;
+    const jobTitle = currentApp.job_title;
 
     await query(
       'INSERT INTO notifications (user_id, title, message) VALUES (?, ?, ?)',
-      [candidateUserId, `Application Status Update: ${status}`, `Your application for "${jobTitle}" has been updated to "${status}".`]
+      [candidateUserId, `Application Status Update: ${status}`, `Your application for "${jobTitle}" has been updated from "${oldStatus}" to "${status}".`]
     );
 
-    // 📧 Send Email Notification to Candidate on Status Change
-    sendCandidateStatusUpdateNotification({
-      candidateName,
-      candidateEmail,
-      jobTitle,
-      newStatus: status
-    }).catch(err => console.error('Status update email error:', err));
+    // 📧 Send Email Notification to Candidate on Genuine Status Change
+    let emailDelivered = true;
+    try {
+      const emailResult = await sendCandidateStatusUpdateNotification({
+        candidateName,
+        candidateEmail,
+        jobTitle,
+        oldStatus,
+        newStatus: status,
+        applicationId: id
+      });
+      if (emailResult && !emailResult.success) {
+        emailDelivered = false;
+      }
+    } catch (emailErr) {
+      console.error('Status update email error:', emailErr.message);
+      emailDelivered = false;
+    }
 
-    return res.json({ message: `Application status updated to ${status}.` });
+    return res.json({ 
+      message: `Application status updated to ${status}.`,
+      updated: true,
+      emailDelivered
+    });
   } catch (error) {
     console.error('Error updating status:', error);
     return res.status(500).json({ message: 'Server error updating status.', error: error.message });

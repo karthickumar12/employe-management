@@ -40,6 +40,9 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (formData) => {
     const response = await api.post('/auth/register', formData);
+    if (response.data?.requiresVerification) {
+      return response.data;
+    }
     const { token, user: newUser } = response.data;
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(newUser));

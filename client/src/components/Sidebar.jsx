@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { 
   LayoutDashboard, User, Briefcase, PlusCircle, FileText, 
   Calendar, BarChart3, Users, Building2, UserCheck, CheckSquare, 
-  LogOut, ShieldAlert
+  LogOut, ShieldAlert, Mail
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -40,6 +40,7 @@ export const Sidebar = () => {
     { name: 'Manage Job Vacancies', path: '/admin/jobs', icon: Briefcase },
     { name: 'Manage Applications', path: '/admin/applications', icon: CheckSquare },
     { name: 'Reports & Analytics', path: '/admin/reports', icon: BarChart3 },
+    { name: 'Email Notification Logs', path: '/admin/email-logs', icon: Mail },
   ];
 
   const links = role === 'admin' ? adminLinks : role === 'recruiter' ? recruiterLinks : candidateLinks;
