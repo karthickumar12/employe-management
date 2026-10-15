@@ -40,8 +40,8 @@ All pre-seeded test accounts use password: **`password123`** (All pre-verified: 
 | **Admin** | System Administrator | `admin@recruitment.com` | `password123` |
 | **Recruiter Lead** | Sarah Jenkins (HR Lead) | `sarah.recruiter@recruitment.com` | `password123` |
 | **Tech Recruiter** | Alex Rivera (Technical Lead) | `alex.tech@recruitment.com` | `password123` |
-| **Candidate** | KARTHICKUMAR S S | `karthick.candidate@recruitment.com` | `password123` |
-| **Candidate** | John Doe | `john.doe@gmail.com` | `password123` |
+| **Candidate (Live Email)** | KARTHICKUMAR S S | `karthickumar1207@gmail.com` | `password123` |
+| **Candidate (Demo)** | John Doe | `john.doe@gmail.com` | `password123` |
 
 ---
 
@@ -65,9 +65,12 @@ The system includes an end-to-end email notification infrastructure:
    - Sent immediately upon candidate application submission with unique Reference `#APP-{id}`.
    - Alerts the recruiter/HR lead with candidate credentials.
 
-4. **Status Change Email Notifications**:
-   - Dispatched to candidate when admin or recruiter changes status (`Under Review`, `Shortlisted`, `Selected`, `Rejected`).
-   - Triggered **only on genuine status changes** (duplicate updates skipped).
+4. **Recruiter Decision & Status Change Email Notifications**:
+   - Recruiter can click the dedicated **Make Decision** modal in the Applicant Management dashboard.
+   - Dispatched to candidate when recruiter makes a decision (`Selected / Offer`, `Shortlisted`, `Under Review`, `Rejected`).
+   - Includes custom **Recruiter Remarks & Next Steps** (e.g., joining date, offer details, technical feedback).
+   - Candidate receives tailored HTML emails with rich decision cards and portal links.
+   - Delivered directly to candidate's Gmail inbox and saved in application tracking history.
 
 5. **Interview Scheduling, Rescheduling & Cancellation**:
    - Dispatched when an interview is booked or rescheduled, including candidate name, job title, date/time with timezone, and Google Meet link.
