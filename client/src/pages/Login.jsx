@@ -100,14 +100,14 @@ export const Login = () => {
 
               <button
                 type="button"
-                onClick={() => handleQuickFill('karthick.candidate@recruitment.com')}
+                onClick={() => handleQuickFill('karthickumar1207@gmail.com')}
                 className="w-full text-left p-2 bg-white rounded-lg border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 transition-colors flex items-center justify-between"
               >
                 <div>
                   <p className="font-bold text-emerald-900 text-[11px] flex items-center gap-1">
                     <User className="w-3.5 h-3.5 text-emerald-600" /> Candidate (Karthickumar)
                   </p>
-                  <p className="text-[10px] text-slate-500">karthick.candidate@recruitment.com</p>
+                  <p className="text-[10px] text-slate-500">karthickumar1207@gmail.com</p>
                 </div>
                 <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">Fill</span>
               </button>
