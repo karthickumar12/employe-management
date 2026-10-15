@@ -23,10 +23,15 @@ function getTransporter() {
     if (smtpUser && smtpPass) {
       if (smtpHost.includes('gmail') || smtpUser.includes('@gmail.com')) {
         transporter = nodemailer.createTransport({
-          service: 'gmail',
+          host: 'smtp.gmail.com',
+          port: smtpPort || 587,
+          secure: false, // Port 587 STARTTLS
           auth: {
             user: smtpUser,
-            pass: smtpPass
+            pass: smtpPass.replace(/\s+/g, '')
+          },
+          tls: {
+            rejectUnauthorized: false
           }
         });
       } else {
