@@ -1,3 +1,7 @@
+const dns = require('dns');
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
 const nodemailer = require('nodemailer');
 const dotenv = require('dotenv');
 const { query } = require('../config/db');
@@ -366,68 +370,218 @@ async function sendRecruiterNewApplicantAlert({
 }
 
 // ============================================================================
-// 5. Application Status Change Notification (To Candidate)
+// 5. Application Decision & Status Change Notification (To Candidate)
 // ============================================================================
 async function sendCandidateStatusUpdateNotification({
   candidateName,
   candidateEmail,
   jobTitle,
+  companyName = 'RecruitX',
   oldStatus,
   newStatus,
+  notes,
   applicationId
 }) {
   const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-  const subject = `Status Update for ${jobTitle}: ${newStatus}`;
+  const orgName = companyName || 'RecruitX';
+  const refNum = applicationId ? `#APP-${applicationId}` : '#APP-REF';
 
-  let statusMessage = `Your application for "${jobTitle}" has moved to the next step.`;
+  let subject = `Decision Update: ${newStatus} for ${jobTitle} - ${orgName}`;
+  let headerTitle = `Application Decision: ${newStatus}`;
+  let headerColor = '#0284c7';
   let badgeColor = '#0284c7';
   let badgeBg = '#e0f2fe';
+  let notificationType = 'STATUS_UPDATE';
+  let contentHtml = '';
+  let plainTextBody = '';
 
-  if (newStatus === 'Shortlisted') {
-    statusMessage = 'Congratulations! Your qualifications have impressed our team and you have been shortlisted for this role.';
-    badgeColor = '#16a34a';
-    badgeBg = '#dcfce7';
-  } else if (newStatus === 'Interview Scheduled') {
-    statusMessage = 'An interview session has been arranged for your application. Please check your interview schedule in the portal.';
-    badgeColor = '#9333ea';
-    badgeBg = '#f3e8ff';
-  } else if (newStatus === 'Selected') {
-    statusMessage = 'Congratulations! We are delighted to announce that you have been selected for this position!';
+  if (newStatus === 'Selected') {
+    notificationType = 'DECISION_SELECTED';
+    subject = `🎉 Congratulations! You have been Selected for ${jobTitle} at ${orgName}`;
+    headerTitle = 'Offer & Selection Announcement';
+    headerColor = '#059669';
     badgeColor = '#059669';
     badgeBg = '#d1fae5';
+
+    contentHtml = `
+      <p style="font-size: 15px; color: #0f172a;">Dear <strong>${candidateName}</strong>,</p>
+      <p style="font-size: 14px; color: #334155; line-height: 1.6;">
+        We are thrilled to announce that following your application and technical interviews, 
+        our hiring committee at <strong>${orgName}</strong> has officially <strong>selected you</strong> for the position of 
+        <strong>${jobTitle}</strong>!
+      </p>
+
+      <div style="background-color: ${badgeBg}; border: 2px solid ${badgeColor}; border-radius: 10px; padding: 20px; margin: 24px 0; text-align: center;">
+        <span style="font-size: 12px; text-transform: uppercase; font-weight: 700; color: #047857; letter-spacing: 0.08em; display: block; margin-bottom: 6px;">Recruiter Final Decision</span>
+        <span style="font-size: 26px; font-weight: 800; color: ${badgeColor}; display: block;">SELECTED / HIRED 🎉</span>
+        <span style="font-size: 12px; color: #065f46; margin-top: 6px; display: block;">Application Ref: ${refNum}</span>
+      </div>
+
+      ${notes ? `
+        <div style="background-color: #f0fdf4; border-left: 4px solid #059669; padding: 14px 18px; border-radius: 8px; margin: 20px 0;">
+          <h4 style="margin: 0 0 6px 0; color: #065f46; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Recruiter's Remarks & Next Steps:</h4>
+          <p style="margin: 0; font-size: 13px; color: #166534; line-height: 1.5; white-space: pre-line;">${notes}</p>
+        </div>
+      ` : ''}
+
+      <div class="card" style="border-left-color: #059669;">
+        <h4 style="margin: 0 0 8px 0; color: #065f46;">What Happens Next:</h4>
+        <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #334155; line-height: 1.6;">
+          <li>Our HR onboarding coordinator will prepare your formal employment offer letter</li>
+          <li>Log in to your candidate portal to track onboarding status and verification documents</li>
+          <li>If you have any questions, you can reach out directly through the portal support</li>
+        </ul>
+      </div>
+
+      <div style="text-align: center; margin: 28px 0 10px 0;">
+        <a href="${clientUrl}/candidate/track/${applicationId}" class="btn" style="background-color: #059669; font-size: 14px; padding: 12px 28px;">
+          View Decision & Offer in Candidate Portal &rarr;
+        </a>
+      </div>
+    `;
+
+    plainTextBody = `Hello ${candidateName},\n\nCongratulations! We are delighted to inform you that you have been SELECTED for the position of "${jobTitle}" at ${orgName}.\n\nReference: ${refNum}\nStatus: Selected / Hired\n${notes ? `\nRecruiter Notes & Next Steps:\n${notes}\n` : ''}\nOur HR team will reach out with your formal onboarding package. You can review your status in the portal: ${clientUrl}/candidate/track/${applicationId}\n\nWarm regards,\nRecruitment & Talent Acquisition Team\n${orgName}`;
+
   } else if (newStatus === 'Rejected') {
-    statusMessage = 'Thank you for your interest and the time invested in our recruitment process. While we are unable to offer you this specific position at this time, we will retain your profile for future openings.';
+    notificationType = 'DECISION_REJECTED';
+    subject = `Update Regarding Your Application for ${jobTitle} - ${orgName}`;
+    headerTitle = 'Application Status Notice';
+    headerColor = '#475569';
     badgeColor = '#dc2626';
     badgeBg = '#fee2e2';
-  } else if (newStatus === 'Under Review') {
-    statusMessage = 'Your application and credentials are currently being reviewed in detail by our hiring manager.';
+
+    contentHtml = `
+      <p style="font-size: 15px; color: #0f172a;">Dear <strong>${candidateName}</strong>,</p>
+      <p style="font-size: 14px; color: #334155; line-height: 1.6;">
+        Thank you very much for your interest in joining <strong>${orgName}</strong> and for taking the time to participate in our recruitment process for the 
+        <strong>${jobTitle}</strong> position.
+      </p>
+
+      <div style="background-color: ${badgeBg}; border: 1px solid #fca5a5; border-radius: 8px; padding: 16px; margin: 20px 0; text-align: center;">
+        <span style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #991b1b; letter-spacing: 0.05em; display: block; margin-bottom: 4px;">Application Status</span>
+        <span style="font-size: 20px; font-weight: 800; color: ${badgeColor};">${newStatus}</span>
+        <span style="font-size: 11px; color: #7f1d1d; margin-top: 4px; display: block;">Application Ref: ${refNum}</span>
+      </div>
+
+      <p style="font-size: 13px; color: #334155; line-height: 1.6;">
+        After thorough review and consideration of all candidate qualifications, we regret to inform you that we will not be moving forward with your candidacy for this particular vacancy at this time.
+      </p>
+
+      ${notes ? `
+        <div style="background-color: #f8fafc; border-left: 4px solid #64748b; padding: 14px 18px; border-radius: 8px; margin: 20px 0;">
+          <h4 style="margin: 0 0 6px 0; color: #334155; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Hiring Team Feedback:</h4>
+          <p style="margin: 0; font-size: 13px; color: #475569; line-height: 1.5; white-space: pre-line;">${notes}</p>
+        </div>
+      ` : ''}
+
+      <div class="card" style="border-left-color: #64748b;">
+        <p style="margin: 0; font-size: 13px; color: #475569; line-height: 1.6;">
+          Our decision does not diminish the value of your skills and accomplishments. We will maintain your profile in our active talent directory, and our recruitment team will reach out should future openings align with your background.
+        </p>
+      </div>
+
+      <div style="text-align: center; margin: 25px 0 10px 0;">
+        <a href="${clientUrl}/candidate/dashboard" class="btn" style="background-color: #475569;">
+          Explore Other Opportunities &rarr;
+        </a>
+      </div>
+    `;
+
+    plainTextBody = `Hello ${candidateName},\n\nThank you for taking the time to apply for the "${jobTitle}" position at ${orgName}.\n\nAfter careful evaluation, our hiring team has decided to proceed with other candidates whose experience more closely matches our immediate technical needs for this specific role.\n\nReference: ${refNum}\nStatus: Rejected\n${notes ? `\nRecruiter Feedback:\n${notes}\n` : ''}\nWe will keep your resume on file for future opportunities. We wish you the very best in your career pursuits.\n\nSincerely,\nRecruitment Team\n${orgName}`;
+
+  } else if (newStatus === 'Shortlisted') {
+    notificationType = 'DECISION_SHORTLISTED';
+    subject = `🌟 Great News! You have been Shortlisted for ${jobTitle} - ${orgName}`;
+    headerTitle = 'Candidate Shortlisted!';
+    headerColor = '#2563eb';
+    badgeColor = '#2563eb';
+    badgeBg = '#eff6ff';
+
+    contentHtml = `
+      <p style="font-size: 15px; color: #0f172a;">Dear <strong>${candidateName}</strong>,</p>
+      <p style="font-size: 14px; color: #334155; line-height: 1.6;">
+        We have great news! Following the initial screening of applicants, our hiring team at <strong>${orgName}</strong> 
+        has <strong>shortlisted</strong> your application for the <strong>${jobTitle}</strong> position.
+      </p>
+
+      <div style="background-color: ${badgeBg}; border: 1px solid #bfdbfe; border-radius: 8px; padding: 18px; margin: 20px 0; text-align: center;">
+        <span style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #1e40af; letter-spacing: 0.05em; display: block; margin-bottom: 4px;">Recruitment Stage</span>
+        <span style="font-size: 22px; font-weight: 800; color: ${badgeColor};">${newStatus}</span>
+        <span style="font-size: 11px; color: #1e3a8a; margin-top: 4px; display: block;">Application Ref: ${refNum}</span>
+      </div>
+
+      ${notes ? `
+        <div style="background-color: #f0f9ff; border-left: 4px solid #2563eb; padding: 14px 18px; border-radius: 8px; margin: 20px 0;">
+          <h4 style="margin: 0 0 6px 0; color: #1e40af; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Recruiter's Remarks:</h4>
+          <p style="margin: 0; font-size: 13px; color: #1d4ed8; line-height: 1.5; white-space: pre-line;">${notes}</p>
+        </div>
+      ` : ''}
+
+      <div class="card" style="border-left-color: #2563eb;">
+        <h4 style="margin: 0 0 8px 0; color: #1e40af;">Next Steps:</h4>
+        <p style="margin: 0; font-size: 13px; color: #334155; line-height: 1.6;">
+          Our recruitment team will be scheduling your technical evaluation / interview round shortly. 
+          Please keep an eye on your inbox and ensure your contact details remain current.
+        </p>
+      </div>
+
+      <div style="text-align: center; margin: 25px 0 10px 0;">
+        <a href="${clientUrl}/candidate/track/${applicationId}" class="btn" style="background-color: #2563eb;">
+          Track Application Status &rarr;
+        </a>
+      </div>
+    `;
+
+    plainTextBody = `Hello ${candidateName},\n\nGreat news! Your application for "${jobTitle}" at ${orgName} has been SHORTLISTED for the next stage.\n\nReference: ${refNum}\nStatus: Shortlisted\n${notes ? `\nRecruiter Notes:\n${notes}\n` : ''}\nOur hiring team will be in touch shortly regarding interview scheduling. Track your status: ${clientUrl}/candidate/track/${applicationId}\n\nBest regards,\nRecruitment Team\n${orgName}`;
+
+  } else {
+    // Under Review, Applied, Interview Scheduled, or Custom
+    notificationType = 'STATUS_UPDATE';
+    subject = `Application Update: ${newStatus} for ${jobTitle} - ${orgName}`;
+    headerTitle = 'Application Status Notification';
+    headerColor = '#0284c7';
+    badgeColor = '#0284c7';
+    badgeBg = '#e0f2fe';
+
+    contentHtml = `
+      <p style="font-size: 15px; color: #0f172a;">Dear <strong>${candidateName}</strong>,</p>
+      <p style="font-size: 14px; color: #334155; line-height: 1.6;">
+        We are writing to provide a status update regarding your application for <strong>${jobTitle}</strong> at <strong>${orgName}</strong>:
+      </p>
+
+      <div style="background-color: ${badgeBg}; border: 1px solid #bae6fd; border-radius: 8px; padding: 18px; margin: 20px 0; text-align: center;">
+        <span style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #0369a1; letter-spacing: 0.05em; display: block; margin-bottom: 4px;">Updated Status</span>
+        <span style="font-size: 22px; font-weight: 800; color: ${badgeColor};">${newStatus}</span>
+        <span style="font-size: 11px; color: #0284c7; margin-top: 4px; display: block;">Previous Status: ${oldStatus || 'Applied'} • Ref: ${refNum}</span>
+      </div>
+
+      ${notes ? `
+        <div style="background-color: #f0f9ff; border-left: 4px solid #0284c7; padding: 14px 18px; border-radius: 8px; margin: 20px 0;">
+          <h4 style="margin: 0 0 6px 0; color: #0369a1; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Recruiter's Remarks:</h4>
+          <p style="margin: 0; font-size: 13px; color: #0284c7; line-height: 1.5; white-space: pre-line;">${notes}</p>
+        </div>
+      ` : ''}
+
+      <div style="text-align: center; margin: 25px 0 10px 0;">
+        <a href="${clientUrl}/candidate/track/${applicationId}" class="btn" style="background-color: ${badgeColor};">
+          View Application Progress &rarr;
+        </a>
+      </div>
+    `;
+
+    plainTextBody = `Hello ${candidateName},\n\nYour application status for "${jobTitle}" at ${orgName} has been updated to "${newStatus}".\n\nPrevious Status: ${oldStatus || 'N/A'}\nNew Status: ${newStatus}\nReference: ${refNum}\n${notes ? `\nRecruiter Notes:\n${notes}\n` : ''}\nTrack details: ${clientUrl}/candidate/track/${applicationId}\n\nBest regards,\nRecruitment Team\n${orgName}`;
   }
-
-  const text = `Hello ${candidateName},\n\nYour application status for "${jobTitle}" has been updated:\n\nPrevious Status: ${oldStatus || 'N/A'}\nNew Status: ${newStatus}\n\n${statusMessage}\n\nView details: ${clientUrl}/candidate/applications\n\nBest regards,\nHiring Team`;
-
-  const contentHtml = `
-    <p>Dear <strong>${candidateName}</strong>,</p>
-    <p>We are writing to provide an update regarding your application for <strong>${jobTitle}</strong>:</p>
-    <div style="background-color: ${badgeBg}; border: 1px solid ${badgeColor}33; border-radius: 8px; padding: 18px; margin: 20px 0; text-align: center;">
-      <span style="font-size: 12px; text-transform: uppercase; font-weight: 700; color: #64748b; letter-spacing: 0.05em; display: block; margin-bottom: 6px;">Application Status</span>
-      <span style="font-size: 22px; font-weight: 800; color: ${badgeColor};">${newStatus}</span>
-    </div>
-    <p style="font-size: 14px; color: #334155; line-height: 1.6;">${statusMessage}</p>
-    <div style="text-align: center; margin: 25px 0 10px 0;">
-      <a href="${clientUrl}/candidate/applications" class="btn" style="background-color: ${badgeColor};">View Application Details &rarr;</a>
-    </div>
-  `;
 
   return await dispatchEmail({
     to: candidateEmail,
     subject,
-    text,
+    text: plainTextBody,
     html: buildHtmlTemplate({
-      headerTitle: 'Application Status Notification',
-      headerColor: badgeColor,
+      headerTitle,
+      headerColor,
       contentHtml
     }),
-    notificationType: 'STATUS_UPDATE',
+    notificationType,
     relatedEntityType: 'application',
     relatedEntityId: applicationId
   });

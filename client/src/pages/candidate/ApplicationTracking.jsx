@@ -4,7 +4,7 @@ import api from '../../services/api';
 import Navbar from '../../components/Navbar';
 import Sidebar from '../../components/Sidebar';
 import StatusBadge from '../../components/StatusBadge';
-import { ArrowLeft, CheckCircle2, Clock, Calendar, Building2, MapPin, User, Mail } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Clock, Calendar, Building2, MapPin, User, Mail, MessageSquare, Award } from 'lucide-react';
 
 export const ApplicationTracking = () => {
   const { id } = useParams();
@@ -114,6 +114,29 @@ export const ApplicationTracking = () => {
               <p>Submitted On: <strong className="text-slate-900">{new Date(app.applied_at).toLocaleString()}</strong></p>
             </div>
           </div>
+
+          {/* Recruiter Decision Feedback & Notes */}
+          {app.recruiter_notes && (
+            <div className={`p-5 rounded-2xl border shadow-sm ${
+              app.status === 'Selected' ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950' :
+              app.status === 'Rejected' ? 'bg-slate-50 border-slate-300 text-slate-800' :
+              app.status === 'Shortlisted' ? 'bg-blue-50/80 border-blue-200 text-blue-950' :
+              'bg-amber-50/80 border-amber-200 text-amber-950'
+            }`}>
+              <div className="flex items-center gap-2 mb-2 font-bold text-sm">
+                <MessageSquare className={`w-4 h-4 ${
+                  app.status === 'Selected' ? 'text-emerald-700' :
+                  app.status === 'Rejected' ? 'text-slate-600' :
+                  app.status === 'Shortlisted' ? 'text-blue-700' :
+                  'text-amber-700'
+                }`} />
+                <span>Recruiter Decision Remarks & Feedback:</span>
+              </div>
+              <p className="text-xs leading-relaxed font-medium whitespace-pre-line pl-6">
+                {app.recruiter_notes}
+              </p>
+            </div>
+          )}
 
           {/* Visual Step Timeline Tracker */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">

@@ -292,11 +292,11 @@ async function getApplicants(req, res) {
   }
 }
 
-// Update Application Status (Applied, Under Review, Shortlisted, Interview Scheduled, Selected, Rejected)
+// Update Application Status & Recruiter Decision (Applied, Under Review, Shortlisted, Interview Scheduled, Selected, Rejected)
 async function updateApplicationStatus(req, res) {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, notes, sendEmail = true } = req.body;
 
     const validStatuses = ['Applied', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Selected', 'Rejected'];
     if (!validStatuses.includes(status)) {
@@ -304,9 +304,12 @@ async function updateApplicationStatus(req, res) {
     }
 
     const appDetails = await query(
-      `SELECT a.id, a.status as old_status, j.title as job_title, c.user_id as candidate_user_id, u.name as candidate_name, u.email as candidate_email 
+      `SELECT a.id, a.status as old_status, a.recruiter_notes, 
+              j.title as job_title, r.company_name,
+              c.user_id as candidate_user_id, u.name as candidate_name, u.email as candidate_email 
        FROM applications a 
        JOIN jobs j ON a.job_id = j.id 
+       JOIN recruiters r ON j.recruiter_id = r.id
        JOIN candidates c ON a.candidate_id = c.id 
        JOIN users u ON c.user_id = u.id 
        WHERE a.id = ?`,
@@ -319,51 +322,79 @@ async function updateApplicationStatus(req, res) {
 
     const currentApp = appDetails[0];
     const oldStatus = currentApp.old_status;
+    const currentNotes = currentApp.recruiter_notes || '';
+    const newNotes = notes !== undefined ? (notes || '').trim() : currentNotes;
 
-    // Send notifications ONLY when the status genuinely changes
-    if (oldStatus === status) {
+    const statusChanged = oldStatus !== status;
+    const notesChanged = notes !== undefined && newNotes !== currentNotes;
+
+    // Send notifications if status changed OR new notes/feedback provided
+    if (!statusChanged && !notesChanged) {
       return res.json({ 
-        message: `Application is already at status "${status}".`,
-        updated: false 
+        message: `Application is already at status "${status}" with current remarks.`,
+        updated: false,
+        status,
+        recruiterNotes: currentNotes
       });
     }
 
-    await query('UPDATE applications SET status = ? WHERE id = ?', [status, id]);
+    await query('UPDATE applications SET status = ?, recruiter_notes = ? WHERE id = ?', [status, newNotes, id]);
 
     // Send In-App Notification to Candidate
     const candidateUserId = currentApp.candidate_user_id;
     const candidateName = currentApp.candidate_name;
     const candidateEmail = currentApp.candidate_email;
     const jobTitle = currentApp.job_title;
+    const companyName = currentApp.company_name || 'RecruitX';
+
+    let notifTitle = `Application Decision: ${status}`;
+    let notifMessage = `Your application for "${jobTitle}" at ${companyName} has been updated to "${status}".`;
+    if (newNotes) {
+      notifMessage += ` Recruiter Notes: ${newNotes}`;
+    }
 
     await query(
       'INSERT INTO notifications (user_id, title, message) VALUES (?, ?, ?)',
-      [candidateUserId, `Application Status Update: ${status}`, `Your application for "${jobTitle}" has been updated from "${oldStatus}" to "${status}".`]
+      [candidateUserId, notifTitle, notifMessage]
     );
 
-    // 📧 Send Email Notification to Candidate on Genuine Status Change
+    // 📧 Send Email Notification to Candidate on Recruiter Decision
     let emailDelivered = true;
-    try {
-      const emailResult = await sendCandidateStatusUpdateNotification({
-        candidateName,
-        candidateEmail,
-        jobTitle,
-        oldStatus,
-        newStatus: status,
-        applicationId: id
-      });
-      if (emailResult && !emailResult.success) {
+    let emailError = null;
+
+    if (sendEmail !== false) {
+      try {
+        const emailResult = await sendCandidateStatusUpdateNotification({
+          candidateName,
+          candidateEmail,
+          jobTitle,
+          companyName,
+          oldStatus,
+          newStatus: status,
+          notes: newNotes,
+          applicationId: id
+        });
+        if (emailResult && !emailResult.success) {
+          emailDelivered = false;
+          emailError = emailResult.error;
+        }
+      } catch (emailErr) {
+        console.error('Status update email error:', emailErr.message);
         emailDelivered = false;
+        emailError = emailErr.message;
       }
-    } catch (emailErr) {
-      console.error('Status update email error:', emailErr.message);
+    } else {
       emailDelivered = false;
     }
 
     return res.json({ 
-      message: `Application status updated to ${status}.`,
+      message: `Application decision updated to "${status}". ${sendEmail ? (emailDelivered ? `Notification email sent to ${candidateEmail}.` : `Email queued in outbox for ${candidateEmail}.`) : ''}`,
       updated: true,
-      emailDelivered
+      status,
+      recruiterNotes: newNotes,
+      emailDelivered,
+      candidateEmail,
+      emailError
     });
   } catch (error) {
     console.error('Error updating status:', error);
